@@ -191,17 +191,18 @@ if uploaded_file is not None:
                 </div>
                 """, unsafe_allow_html=True)
 
-                # Duplicate notice
-                if stats["duplicates"] > 0:
+                # Deduplication notice
+                if stats["rows_removed"] > 0:
                     st.markdown(f"""
                     <div class="dup-box">
-                        ⚠️ &nbsp;<strong>{stats['duplicates']} rows have a duplicate Approval Number.</strong><br>
-                        These rows are highlighted in <strong>yellow</strong> in the downloaded file so they are easy to find.
+                        ℹ️ &nbsp;<strong>{stats['rows_removed']} duplicate rows were automatically removed.</strong><br>
+                        One row is kept per unique Approval Number + Status combination.
+                        (e.g. 3 Approved rows for same number → kept as 1)
                     </div>
                     """, unsafe_allow_html=True)
                 else:
                     st.markdown("""
-                    <div class="no-dup-box">✅ &nbsp; No duplicate Approval Numbers found.</div>
+                    <div class="no-dup-box">✅ &nbsp; No duplicate rows found.</div>
                     """, unsafe_allow_html=True)
 
                 st.markdown("<br>", unsafe_allow_html=True)

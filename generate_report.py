@@ -1,9 +1,8 @@
 """
 generate_report.py
-Generates a single-sheet report: All Approval Summary
-- Exact 24 columns, plain headers row 1, data from row 2
-- Duplicate ApprovalNum rows highlighted yellow
-- No other sheets
+Deduplication rule:
+  - Keep one row per unique (ApprovalNum, ApprovedStatus) combination
+  - e.g. 3x Approved + 1x Rejected → 1x Approved + 1x Rejected (2 rows)
 """
 
 import pandas as pd
@@ -22,7 +21,6 @@ SOURCE_COLS = [
 
 REQUIRED_COLS = ["CoCode", "CoName", "ApprovedStatus", "ApprovalNum", "ResponseRemarks"]
 
-YELLOW      = PatternFill("solid", fgColor="FFFF00")
 HEADER_FILL = PatternFill("solid", fgColor="1a2e44")
 HEADER_FONT = Font(bold=True, color="FFFFFF")
 THIN        = Side(style="thin")
@@ -69,11 +67,18 @@ def generate_report(approval_file, output_path):
             df[col] = None
     df = df[SOURCE_COLS].copy()
 
-    # ── Find duplicates ───────────────────────────────────────────────────
-    dup_mask = df.duplicated("ApprovalNum", keep=False).tolist()
-    dup_count = sum(dup_mask)
+    rows_before = len(df)
 
-    # ── Build workbook — single sheet ─────────────────────────────────────
+    # ── Deduplicate: keep first row per (ApprovalNum, ApprovedStatus) ─────
+    # This means: if 3 Approved rows for same ApprovalNum → keep 1 Approved
+    # But if 1 Approved + 1 Rejected for same ApprovalNum → keep both
+    df = df.drop_duplicates(subset=["ApprovalNum", "ApprovedStatus"], keep="first")
+    df = df.reset_index(drop=True)
+
+    rows_after  = len(df)
+    rows_removed = rows_before - rows_after
+
+    # ── Build workbook ────────────────────────────────────────────────────
     wb = Workbook()
     ws = wb.active
     ws.title = "All Approval Summary"
@@ -83,31 +88,24 @@ def generate_report(approval_file, output_path):
         cell = ws.cell(row=1, column=ci, value=col_name)
         cell.font = HEADER_FONT
         cell.fill = HEADER_FILL
-        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=False)
+        cell.alignment = Alignment(horizontal="center", vertical="center")
         cell.border = BORDER
     ws.row_dimensions[1].height = 20
 
     # Row 2+ — data
-    for ri, (row, is_dup) in enumerate(zip(df.itertuples(index=False), dup_mask), 2):
+    for ri, row in enumerate(df.itertuples(index=False), 2):
         for ci, val in enumerate(row, 1):
             cell = ws.cell(row=ri, column=ci)
-            # Clean value
             if isinstance(val, float) and pd.isna(val):
                 cell.value = None
             elif hasattr(val, 'item'):
                 cell.value = val.item()
             else:
                 cell.value = val
-            # Highlight duplicates
-            if is_dup:
-                cell.fill = YELLOW
             cell.border = BORDER
             cell.alignment = Alignment(vertical="center")
 
-    # Freeze header row
     ws.freeze_panes = "A2"
-
-    # Auto-fit column widths
     _auto_width(ws)
 
     wb.save(output_path)
@@ -118,6 +116,6 @@ def generate_report(approval_file, output_path):
         "partial":        int((df["ApprovedStatus"] == "Partiaily").sum()),
         "pending":        int((df["ApprovedStatus"] == "Pending").sum()),
         "rejected":       int((df["ApprovedStatus"] == "Rejected").sum()),
-        "duplicates":     dup_count,
+        "rows_removed":   rows_removed,
         "detected_sheet": detected_sheet,
     }
